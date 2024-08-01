@@ -1,0 +1,97 @@
+raspberry pi 4
+
+data collection:
+
+import smbus2
+import time
+
+bus = smbus2.SMBus(1)
+address = 0x68
+
+def read_byte(adr):
+    return bus.read_byte_data(address, adr)
+
+def read_word(adr):
+    high = bus.read_byte_data(address, adr)
+    low = bus.read_byte_data(address, adr+1)
+    val = (high << 8) + low
+    return val
+
+def read_word_2c(adr):
+    val = read_word(adr)
+    if (val >= 0x8000):
+        return -((65535 - val) + 1)
+    else:
+        return val
+
+def get_imu_data():
+    accel_x = read_word_2c(0x3b)
+    accel_y = read_word_2c(0x3d)
+    accel_z = read_word_2c(0x3f)
+    return [accel_x, accel_y, accel_z]
+
+
+data = []
+try:
+    while True:
+        imu_data = get_imu_data()
+        data.append(imu_data)
+        time.sleep(0.1)
+except KeyboardInterrupt:
+    pass
+
+
+import csv
+with open('imu_data.csv', 'w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerows(data)
+
+Training model:
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+import joblib
+
+
+data = pd.read_csv('imu_data.csv')
+X = data.iloc[:, :-1]
+y = data.iloc[:, -1]
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+
+model = RandomForestClassifier()
+model.fit(X_train, y_train)
+
+
+y_pred = model.predict(X_test)
+print("Accuracy:", accuracy_score(y_test, y_pred))
+
+
+joblib.dump(model, 'gait_model.pkl')
+
+deployment:
+
+import joblib
+
+
+model = joblib.load('gait_model.pkl')
+
+def predict_gait(imu_data):
+    return model.predict([imu_data])
+
+
+try:
+    while True:
+        imu_data = get_imu_data()
+        prediction = predict_gait(imu_data)
+        print("Gait pattern:", prediction)
+        time.sleep(0.1)
+except KeyboardInterrupt:
+    pass
+
+
+

@@ -1,0 +1,22 @@
+stm32
+
+Data Collection:
+Use the same data collection method but with STM32-specific libraries.
+
+Training the Model:
+Train a simple model on a PC using Python (similar to Raspberry Pi).
+
+Deployment:
+Export the model to a format that STM32 can use, such as a TensorFlow Lite model.
+
+import tensorflow as tf
+
+model = tf.keras.models.load_model('gait_model.h5')
+
+
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+tflite_model = converter.convert()
+
+
+with open('gait_model.tflite', 'wb') as f:
+    f.write(tflite_model)
