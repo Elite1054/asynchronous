@@ -1,0 +1,144 @@
+'STM 32'
+#include "stm32f4xx.h"
+#include "stm32f4xx_hal.h"
+
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
+
+UART_HandleTypeDef huart2;
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART2_UART_Init();
+
+    char data[] = "STM32 sensor data\n";
+    while (1) {
+        HAL_UART_Transmit(&huart2, (uint8_t*)data, strlen(data), HAL_MAX_DELAY);
+        HAL_Delay(1000);
+    }
+}
+
+void SystemClock_Config(void) {
+  
+}
+
+static void MX_USART2_UART_Init(void) {
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    HAL_UART_Init(&huart2);
+}
+
+static void MX_GPIO_Init(void) {
+   
+}
+
+
+'arduino code'
+
+#include <SoftwareSerial.h>
+
+SoftwareSerial mySerial(10, 11); // RX, TX
+
+void setup() {
+  Serial.begin(9600);
+  mySerial.begin(9600);
+}
+
+void loop() {
+  int sensorValue = analogRead(A0); // Read sensor data
+  mySerial.println(sensorValue);
+  delay(1000);
+}
+
+'raspberry pi'
+
+import serial
+import pandas as pd
+
+
+stm32_serial = serial.Serial('/dev/ttyUSB0', 115200)
+arduino_serial = serial.Serial('/dev/ttyUSB1', 9600)
+
+stm32_data = []
+arduino_data = []
+
+while len(stm32_data) < 100 and len(arduino_data) < 100:
+    if stm32_serial.in_waiting > 0:
+        stm32_line = stm32_serial.readline().decode('utf-8').strip()
+        if stm32_line:
+            stm32_data.append(stm32_line)
+    
+    if arduino_serial.in_waiting > 0:
+        arduino_line = arduino_serial.readline().decode('utf-8').strip()
+        if arduino_line:
+            arduino_data.append(arduino_line)
+
+
+df_stm32 = pd.DataFrame(stm32_data, columns=['stm32_reading'])
+df_arduino = pd.DataFrame(arduino_data, columns=['arduino_reading'])
+df_combined = pd.concat([df_stm32, df_arduino], axis=1)
+df_combined.to_csv('sensor_data.csv', index=False)
+
+
+'jetson nano'
+
+'bash'
+sudo apt-get update
+sudo apt-get install python3-pip
+pip3 install tensorflow
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+import pandas as pd
+
+data = pd.read_csv('sensor_data.csv')
+X = data[['stm32_reading', 'arduino_reading']].values
+y = data[['label']].values
+
+model = Sequential([
+    Dense(64, activation='relu', input_shape=(X.shape[1],)),
+    Dense(64, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(X, y, epochs=10, batch_size=32)
+
+model.save('model.h5')
+
+'Benchmarking'
+
+import time
+
+start_time = time.time()
+predictions = model.predict(X)
+end_time = time.time()
+print(f"Time taken for inference: {end_time - start_time} seconds")
+
+'deployment'
+
+from tensorflow.keras.models import load_model
+
+model = load_model('model.h5')
+predictions = model.predict(X)
+
+while True:
+    if stm32_serial.in_waiting > 0 and arduino_serial.in_waiting > 0:
+        stm32_line = stm32_serial.readline().decode('utf-8').strip()
+        arduino_line = arduino_serial.readline().decode('utf-8').strip()
+        if stm32_line and arduino_line:
+            data = [[float(stm32_line), float(arduino_line)]]
+            prediction = model.predict(data)
+            print(f"Prediction: {prediction}")
+
+
