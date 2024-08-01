@@ -1,0 +1,125 @@
+'stm32'
+
+#include "stm32f4xx.h"
+#include "stm32f4xx_hal.h"
+
+UART_HandleTypeDef huart2;
+
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART2_UART_Init();
+
+    char data[] = "Sensor data\n";
+    while (1) {
+        HAL_UART_Transmit(&huart2, (uint8_t*)data, strlen(data), HAL_MAX_DELAY);
+        HAL_Delay(1000);
+    }
+}
+
+void SystemClock_Config(void) {
+    
+}
+
+static void MX_USART2_UART_Init(void) {
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    HAL_UART_Init(&huart2);
+}
+
+static void MX_GPIO_Init(void) {
+   
+}
+
+'raspberry pi'
+
+import serial
+import pandas as pd
+
+ser = serial.Serial('/dev/ttyUSB0', 115200)
+
+data = []
+while True:
+    line = ser.readline().decode('utf-8').strip()
+    if line:
+        data.append(line)
+
+df = pd.DataFrame(data, columns=['sensor_reading'])
+df.to_csv('sensor_data.csv', index=False)
+
+'jetson nano'
+
+'bash'
+
+sudo apt-get update
+sudo apt-get install python3-pip
+pip3 install numpy pandas scikit-learn
+
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+
+
+df = pd.read_csv('sensor_data.csv')
+X = df[['sensor_reading']].values
+
+
+kmeans = KMeans(n_clusters=3)
+kmeans.fit(X)
+df['cluster'] = kmeans.labels_
+
+
+import joblib
+joblib.dump(kmeans, 'kmeans_model.pkl')
+
+
+plt.scatter(df.index, df['sensor_reading'], c=df['cluster'])
+plt.title('K-Means Clustering')
+plt.xlabel('Index')
+plt.ylabel('Sensor Reading')
+plt.show()
+
+pca = PCA(n_components=1)
+X_pca = pca.fit_transform(X)
+df['pca'] = X_pca
+
+
+joblib.dump(pca, 'pca_model.pkl')
+
+
+'arduino uno'
+
+void setup() {
+    Serial.begin(9600);
+}
+
+void loop() {
+    float sensorValue = analogRead(A0);  // Read sensor value
+    Serial.println(sensorValue);
+    delay(1000);
+}
+
+
+import joblib
+
+kmeans = joblib.load('kmeans_model.pkl')
+pca = joblib.load('pca_model.pkl')
+
+df = pd.read_csv('sensor_data.csv')
+X = df[['sensor_reading']].values
+predictions = kmeans.predict(X)
+df['predicted_cluster'] = predictions
+
+df.to_csv('clustered_data.csv', index=False)
